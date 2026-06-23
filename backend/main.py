@@ -2,16 +2,14 @@
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from routes import auth                    # ← ADD THIS
 
-# Initialize the app
 app = FastAPI(
     title="AY-VocabVault API",
     description="LLM-powered personalized vocabulary learning",
     version="1.0.0"
 )
 
-# CORS — allows React frontend to talk to this backend
-# Without this the browser blocks all requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -20,8 +18,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Health check route
-# Visit http://localhost:8000 to confirm server is running
+# Register routes
+app.include_router(auth.router)            # ← ADD THIS
+
 @app.get("/")
 def root():
     return {
