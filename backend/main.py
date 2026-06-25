@@ -1,8 +1,7 @@
-# backend/main.py
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth                    # ← ADD THIS
+from routes import auth
+from routes.auth import router as auth_router
 
 app = FastAPI(
     title="AY-VocabVault API",
@@ -19,7 +18,7 @@ app.add_middleware(
 )
 
 # Register routes
-app.include_router(auth.router)            # ← ADD THIS
+app.include_router(auth_router)
 
 @app.get("/")
 def root():
