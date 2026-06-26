@@ -1,18 +1,14 @@
-# backend/routes/auth.py
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from database import supabase
-from auth_utils import hash_password, verify_password, create_access_token, verify_token
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 # ─────────────────────────────────────────
 # SCHEMAS
-# Define what data shape we expect
 # ─────────────────────────────────────────
-
 class SignupRequest(BaseModel):
     name: str
     email: EmailStr
@@ -26,50 +22,42 @@ class LoginRequest(BaseModel):
 # ─────────────────────────────────────────
 # SIGNUP
 # POST /auth/signup
+# GoTrue 
 # ─────────────────────────────────────────
 @router.post("/signup", status_code=201)
 def signup(request: SignupRequest):
     """
-    1. Check if email already exists
-    2. Hash password
-    3. Save user to Supabase
-    4. Return success message
+    Supabase GoTrue handles:
+    - Email validation
+    - Password hashing
+    - Storing in auth.users
+    - Trigger auto-creates profile row
     """
+    try:
+        result = supabase.auth.sign_up({
+            "email": request.email,
+            "password": request.password,
+            "options": {
+                "data": {
+                    "name": request.name
+                }
+            }
+        })
 
-    # Check if email already exists
-    existing = supabase.table("users")\
-        .select("id")\
-        .eq("email", request.email)\
-        .execute()
+        if result.user is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Signup failed. Please try again."
+            )
 
-    if existing.data:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already registered. Please login."
-        )
+        return {
+            "message": f"Welcome to AY-VocabVault, {request.name}! 🎉",
+            "user_id": result.user.id,
+            "email": result.user.email
+        }
 
-    # Hash password
-    hashed = hash_password(request.password)
-
-    # Save to Supabase
-    result = supabase.table("users").insert({
-        "name": request.name,
-        "email": request.email,
-        "password_hash": hashed
-    }).execute()
-
-    if not result.data:
-        raise HTTPException(
-            status_code=500,
-            detail="Something went wrong. Please try again."
-        )
-
-    new_user = result.data[0]
-
-    return {
-        "message": f"Welcome to AY-VocabVault, {new_user['name']}! 🎉",
-        "user_id": new_user["id"]
-    }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 # ─────────────────────────────────────────
@@ -79,79 +67,27 @@ def signup(request: SignupRequest):
 @router.post("/login")
 def login(request: LoginRequest):
     """
-    1. Find user by email
-    2. Verify password
-    3. Create JWT token
-    4. Return token
+    GoTrue verifies credentials
+    Returns JWT access token
     """
-
-    # Find user by email
-    result = supabase.table("users")\
-        .select("*")\
-        .eq("email", request.email)\
-        .execute()
-
-    if not result.data:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password"
-        )
-
-    user = result.data[0]
-
-    # Verify password
-    if not verify_password(request.password, user["password_hash"]):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid email or password"
-        )
-
-    # Create JWT token
-    token = create_access_token(data={
-        "sub": user["email"],
-        "user_id": user["id"]
-    })
-
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user_name": user["name"],
-        "user_id": user["id"]
-    }
-
-
-# ─────────────────────────────────────────
-# GET CURRENT USER
-# GET /auth/me
-# Protected route — needs token
-# ─────────────────────────────────────────
-@router.get("/me")
-def get_me(authorization: str = Header(...)):
-    """
-    Reads token from header
-    Returns current logged in user info
-    """
-
-    # Header format: "Bearer eyJxxx..."
     try:
-        token = authorization.split(" ")[1]
-        user_data = verify_token(token)
-    except Exception:
-        raise HTTPException(
-            status_code=401,
-            detail="Not authenticated"
-        )
+        result = supabase.auth.sign_in_with_password({
+            "email": request.email,
+            "password": request.password
+        })
 
-    # Fetch user from Supabase
-    result = supabase.table("users")\
-        .select("id, name, email, created_at")\
-        .eq("email", user_data["email"])\
-        .execute()
+        if result.user is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid email or password"
+            )
 
-    if not result.data:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found"
-        )
+        return {
+            "access_token": result.session.access_token,
+            "token_type": "bearer",
+            "user_id": result.user.id,
+            "email": result.user.email
+        }
 
-    return result.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=str(e))
